@@ -55,15 +55,6 @@ Resources:
             Queue: !GetAtt DynamoDBFailureQueue.Arn
             BatchSize: 1
 
-#      Events:
- #       Stream:
-  #        Type: DynamoDB
-   #       Properties:
-    #        Stream: !GetAtt DynamoDBStreamsSource.StreamArn
-     #       BatchSize: 100
-      #      StartingPosition: TRIM_HORIZON
-
-
   # This is a Lambda function config associated with the source code: get-all-items.js
   getAllItemsFunction:
     Type: AWS::Serverless::Function
