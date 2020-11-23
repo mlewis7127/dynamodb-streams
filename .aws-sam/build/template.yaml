@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: dynamodb-streams
+Transform:
+- AWS::Serverless-2016-10-31
+Resources:
+  ProcessDynamoDBStream:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-dynamodb-stream.lambda_handler
+      Runtime: nodejs12.x
+      Policies:
+      - AWSLambdaDynamoDBExecutionRole
+      - Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+          - sqs:SendMessage
+          Resource:
+            Fn::GetAtt:
+            - DynamoDBFailureQueue
+            - Arn
+      CodeUri: ProcessDynamoDBStream
+  DLQHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-dlq-message.lambda_handler
+      Runtime: nodejs12.x
+      Policies:
+      - AWSLambdaDynamoDBExecutionRole
+      - Version: 2012-10-17
+        Statement:
+        - Effect: Allow
+          Action:
+          - dynamodb:GetShardIterator
+          - dynamodb:GetRecords
+          Resource:
+            Fn::GetAtt: DynamoDBStreamsSource.StreamArn
+      Events:
+        MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue:
+              Fn::GetAtt:
+              - DynamoDBFailureQueue
+              - Arn
+            BatchSize: 1
+      CodeUri: DLQHandlerFunction
+  getAllItemsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-all-items.getAllItemsHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP get method to get all items from
+        a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DynamoDBStreamsSource
+      Environment:
+        Variables:
+          SAMPLE_TABLE:
+            Ref: DynamoDBStreamsSource
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /
+            Method: GET
+      CodeUri: getAllItemsFunction
+  getByIdFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/get-by-id.getByIdHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP get method to get one item by
+        id from a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DynamoDBStreamsSource
+      Environment:
+        Variables:
+          SAMPLE_TABLE:
+            Ref: DynamoDBStreamsSource
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /{id}
+            Method: GET
+      CodeUri: getByIdFunction
+  putItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/put-item.putItemHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP post method to add one item to
+        a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DynamoDBStreamsSource
+      Environment:
+        Variables:
+          SAMPLE_TABLE:
+            Ref: DynamoDBStreamsSource
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /
+            Method: POST
+      CodeUri: putItemFunction
+  updateItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/update-item.updateItemHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP post method to add one item to
+        a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DynamoDBStreamsSource
+      Environment:
+        Variables:
+          SAMPLE_TABLE:
+            Ref: DynamoDBStreamsSource
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /update
+            Method: POST
+      CodeUri: updateItemFunction
+  deleteItemFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/delete-item.deleteItemHandler
+      Runtime: nodejs12.x
+      MemorySize: 128
+      Timeout: 100
+      Description: A simple example includes a HTTP post method to add one item to
+        a DynamoDB table.
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DynamoDBStreamsSource
+      Environment:
+        Variables:
+          SAMPLE_TABLE:
+            Ref: DynamoDBStreamsSource
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /delete
+            Method: POST
+      CodeUri: deleteItemFunction
+  DynamoDBStreamsSource:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: DynamoDBStreamsSource
+      AttributeDefinitions:
+      - AttributeName: id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: id
+        KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+  DynamoDBFailureQueue:
+    Type: AWS::SQS::Queue
+  MyEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 50
+      BisectBatchOnFunctionError: true
+      DestinationConfig:
+        OnFailure:
+          Destination:
+            Fn::GetAtt:
+            - DynamoDBFailureQueue
+            - Arn
+      Enabled: true
+      EventSourceArn:
+        Fn::GetAtt:
+        - DynamoDBStreamsSource
+        - StreamArn
+      FunctionName:
+        Fn::GetAtt:
+        - ProcessDynamoDBStream
+        - Arn
+      MaximumRetryAttempts: 1
+      StartingPosition: TRIM_HORIZON
+Outputs:
+  WebEndpoint:
+    Description: API Gateway endpoint URL for Prod stage
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
